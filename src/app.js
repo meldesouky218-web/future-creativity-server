@@ -89,8 +89,6 @@ app.use("/api/projects", authMiddleware, projectsRouter);
 app.use("/api/staff", authMiddleware, roleMiddleware(["admin", "manager"]), staffRouter);
 
 // 3️⃣ باقي المسارات الإدارية
-// ملاحظة: تم نقل القيود الخاصة بمسارات المستخدمين إلى داخل ملف routes/users.js
-// بحيث تبقى "/reset-password" مفتوحة بدون توكن، وباقي المسارات محمية حسب الدور.
 app.use("/api/users", usersRouter);
 app.use("/api/clients", authMiddleware, roleMiddleware(["admin", "manager"]), clientsRouter);
 app.use("/api/attendance", authMiddleware, attendanceRouter);
@@ -104,7 +102,15 @@ app.use("/api/push", pushRouter);
 app.get("/", (req, res) => res.send("✅ Future Creativity API running"));
 
 /* ===========================================================
-   🚀 تشغيل السيرفر
+   🚀 التشغيل المحلي فقط (عند التطوير)
 =========================================================== */
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+if (process.env.NODE_ENV !== "production") {
+  app.listen(PORT, () => console.log(`🚀 Server running locally on port ${PORT}`));
+}
+
+/* ===========================================================
+   📤 التصدير لـ Vercel
+=========================================================== */
+export default app;
