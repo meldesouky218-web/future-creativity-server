@@ -19,17 +19,21 @@ import dashboardRouter from "./routes/dashboard.js";
 import logsRouter from "./routes/logs.js";
 import pushRouter from "./routes/push.js";
 
-dotenv.config();
+/* ===========================================================
+   🌍 إعداد dotenv (فقط محليًا، مش على Vercel)
+=========================================================== */
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 
 /* ===========================================================
-   🧩 ترحيل قاعدة البيانات قبل تشغيل السيرفر
+   🧩 ترحيل قاعدة البيانات (مع التعامل الآمن على Vercel)
 =========================================================== */
 try {
   await migrate();
   console.log("✅ Database migration completed successfully");
 } catch (error) {
-  console.error("❌ Database migration failed. Exiting...", error);
-  process.exit(1);
+  console.error("⚠️ Database migration failed (but continuing):", error.message);
 }
 
 /* ===========================================================
@@ -50,45 +54,41 @@ app.use(
 // قراءة JSON
 app.use(express.json());
 
-// تقديم الملفات المرفوعة
+/* ===========================================================
+   📂 إنشاء مجلدات الرفع تلقائيًا (uploads)
+=========================================================== */
 (() => {
   const uploadsDir = path.resolve("uploads");
-  if (!fs.existsSync(uploadsDir)) {
-    try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch {}
+  const folders = ["projects", "contracts", "users"];
+
+  for (const folder of folders) {
+    const dir = path.join(uploadsDir, folder);
+    if (!fs.existsSync(dir)) {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (err) {
+        console.warn(`⚠️ Failed to create ${dir}:`, err.message);
+      }
+    }
   }
-  const projectsDir = path.join(uploadsDir, "projects");
-  if (!fs.existsSync(projectsDir)) {
-    try { fs.mkdirSync(projectsDir, { recursive: true }); } catch {}
-  }
-  const contractsDir = path.join(uploadsDir, "contracts");
-  if (!fs.existsSync(contractsDir)) {
-    try { fs.mkdirSync(contractsDir, { recursive: true }); } catch {}
-  }
-  const usersDir = path.join(uploadsDir, "users");
-  if (!fs.existsSync(usersDir)) {
-    try { fs.mkdirSync(usersDir, { recursive: true }); } catch {}
-  }
+
   app.use("/uploads", express.static(uploadsDir));
 })();
 
-// تسجيل الطلبات أثناء التطوير
+/* ===========================================================
+   🧾 تسجيل الطلبات أثناء التطوير
+=========================================================== */
 app.use((req, res, next) => {
   console.log(`➡️ ${req.method} ${req.originalUrl}`);
   next();
 });
 
 /* ===========================================================
-   🚀 تعريف المسارات (من الأوسع إلى الأضيق)
+   🚀 تعريف المسارات (Routes)
 =========================================================== */
-
-// 1️⃣ مسارات عامة (بدون توكن)
 app.use("/api/auth", authRouter);
-
-// 2️⃣ مسارات محمية تحتاج تسجيل دخول
 app.use("/api/projects", authMiddleware, projectsRouter);
 app.use("/api/staff", authMiddleware, roleMiddleware(["admin", "manager"]), staffRouter);
-
-// 3️⃣ باقي المسارات الإدارية
 app.use("/api/users", usersRouter);
 app.use("/api/clients", authMiddleware, roleMiddleware(["admin", "manager"]), clientsRouter);
 app.use("/api/attendance", authMiddleware, attendanceRouter);
@@ -98,11 +98,13 @@ app.use("/api/dashboard", authMiddleware, dashboardRouter);
 app.use("/api/logs", authMiddleware, roleMiddleware(["admin"]), logsRouter);
 app.use("/api/push", pushRouter);
 
-// مسار الفحص الأساسي
+/* ===========================================================
+   🩺 اختبار الاتصال
+=========================================================== */
 app.get("/", (req, res) => res.send("✅ Future Creativity API running"));
 
 /* ===========================================================
-   🚀 التشغيل المحلي فقط (عند التطوير)
+   🚀 تشغيل السيرفر (محلي فقط)
 =========================================================== */
 const PORT = process.env.PORT || 5000;
 
@@ -111,6 +113,6 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 /* ===========================================================
-   📤 التصدير لـ Vercel
+   📤 تصدير التطبيق لـ Vercel
 =========================================================== */
 export default app;
