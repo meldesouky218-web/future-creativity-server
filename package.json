@@ -8,7 +8,8 @@
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "seed": "node src/utils/seedDemoData.js"
+    "seed": "node src/utils/seedDemoData.js",
+    "reset-admin": "node src/utils/resetAdmin.js"
   },
   "keywords": [],
   "author": "",

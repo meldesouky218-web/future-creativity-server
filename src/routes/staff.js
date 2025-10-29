@@ -171,8 +171,18 @@ router.put("/:id", async (req, res) => {
       details: `Updated staff #${id}`,
     });
 
+    // fetch latest user snapshot to return
+    const latest = await client.query(
+      `SELECT u.id, u.name, u.email, u.role, u.created_at,
+              sp.job_title, sp.status, sp.phone, sp.avatar_url
+       FROM users u
+       LEFT JOIN staff_profiles sp ON sp.user_id = u.id
+       WHERE u.id = $1`,
+      [id]
+    );
+
     await client.query("COMMIT");
-    res.json({ message: "Staff updated successfully." });
+    res.json({ message: "Staff updated successfully.", user: latest.rows[0] });
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     console.error("❌ Failed to update staff:", error.message);
@@ -281,8 +291,12 @@ router.post("/admin-reset", async (req, res) => {
   if (!email || !newPassword) {
     return res.status(400).json({ message: "Email and new password are required." });
   }
+  const normalizedEmail = email.toString().trim().toLowerCase();
+  if (newPassword.length < 6) {
+    return res.status(400).json({ message: "Password must be at least 6 characters." });
+  }
   try {
-    const userCheck = await pool.query("SELECT id FROM users WHERE email=$1", [email]);
+    const userCheck = await pool.query("SELECT id FROM users WHERE email=$1", [normalizedEmail]);
     if (!userCheck.rowCount) return res.status(404).json({ message: "User not found" });
     const user = userCheck.rows[0];
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -292,7 +306,7 @@ router.post("/admin-reset", async (req, res) => {
       action: "ADMIN_PASSWORD_RESET",
       entityType: "user",
       entityId: user.id,
-      details: `Admin reset password for ${email}`,
+      details: `Admin reset password for ${normalizedEmail}`,
     });
     res.json({ message: "Password updated successfully (by admin)." });
   } catch (error) {
