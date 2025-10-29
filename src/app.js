@@ -41,17 +41,25 @@ try {
 =========================================================== */
 const app = express();
 
-// إعداد CORS
+/* ===========================================================
+   🌐 إعداد CORS لدعم الداشبورد على Vercel
+=========================================================== */
 app.use(
   cors({
-    origin: ["http://localhost:3000"],
+    origin: [
+      "http://localhost:3000",
+      "https://future-creativity-dashboard.vercel.app",
+      /\.vercel\.app$/, // ✅ يسمح لأي فرع فرعي (preview) من Vercel
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
 
-// قراءة JSON
+/* ===========================================================
+   🧾 قراءة JSON
+=========================================================== */
 app.use(express.json());
 
 /* ===========================================================
@@ -101,7 +109,7 @@ app.use("/api/push", pushRouter);
 /* ===========================================================
    🩺 اختبار الاتصال
 =========================================================== */
-app.get("/", (req, res) => res.send("✅ Future Creativity API running"));
+app.get("/", (req, res) => res.send("✅ Future Creativity API running on Vercel"));
 
 /* ===========================================================
    🚀 تشغيل السيرفر (محلي فقط)
