@@ -98,8 +98,8 @@ app.use((req, res, next) => {
 app.use("/api/auth", authRouter);
 app.use("/api/projects", authMiddleware, projectsRouter);
 
-// ✅ مؤقتًا نوقف التوثيق على staff عشان نختبر الاتصال
-app.use("/api/staff", staffRouter);
+// ✅ رجّعنا التوثيق على staff عشان الحماية
+app.use("/api/staff", authMiddleware, roleMiddleware(["admin", "manager"]), staffRouter);
 
 app.use("/api/users", usersRouter);
 app.use("/api/clients", authMiddleware, roleMiddleware(["admin", "manager"]), clientsRouter);
