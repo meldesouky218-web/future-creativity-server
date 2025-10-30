@@ -9,7 +9,8 @@
     "start": "node src/app.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "seed": "node src/utils/seedDemoData.js",
-    "reset-admin": "node src/utils/resetAdmin.js"
+    "reset-admin": "node src/utils/resetAdmin.js",
+    "seed:users": "node src/utils/seedDemoUsers.js"
   },
   "keywords": [],
   "author": "",
