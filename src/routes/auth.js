@@ -10,8 +10,8 @@ const router = express.Router();
 const TOKEN_EXPIRES_IN = "12h";
 
 // 🔹 إنشاء JWT Token
-const createToken = (payload) =>
-  jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: TOKEN_EXPIRES_IN });
+const createToken = (payload, expires = TOKEN_EXPIRES_IN) =>
+  jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: expires });
 
 /* ===================================================
    🔹 1) طلب OTP سواء للتسجيل أو لاسترجاع كلمة المرور
@@ -19,12 +19,9 @@ const createToken = (payload) =>
 router.post("/otp/request", async (req, res) => {
   const { email, purpose } = req.body;
   if (!email || !purpose)
-    return res
-      .status(400)
-      .json({ message: "Email and purpose are required" });
+    return res.status(400).json({ message: "Email and purpose are required" });
 
   const normalizedPurpose = purpose.toLowerCase();
-
   if (!Object.values(OTP_PURPOSES).includes(normalizedPurpose))
     return res.status(400).json({ message: "Unsupported OTP purpose" });
 
@@ -33,27 +30,17 @@ router.post("/otp/request", async (req, res) => {
       email,
     ]);
 
-    // ❌ لو المستخدم بيحاول يسجل وإيميله موجود
-    if (normalizedPurpose === OTP_PURPOSES.REGISTER && existing.rowCount) {
-      return res
-        .status(409)
-        .json({ message: "An account with this email already exists" });
-    }
+    if (normalizedPurpose === OTP_PURPOSES.REGISTER && existing.rowCount)
+      return res.status(409).json({ message: "Account already exists" });
 
-    // ❌ لو المستخدم بيحاول يسترجع باسورد وهو مش موجود
     if (
       normalizedPurpose === OTP_PURPOSES.RESET_PASSWORD &&
       !existing.rowCount
-    ) {
-      return res
-        .status(404)
-        .json({ message: "No user found with this email address" });
-    }
+    )
+      return res.status(404).json({ message: "No user found with this email" });
 
-    // ✅ توليد الكود وإرساله بالإيميل
     const otpResult = await issueOtp(email, normalizedPurpose);
 
-    // 🧾 تسجيل العملية
     await logActivity({
       userId:
         normalizedPurpose === OTP_PURPOSES.RESET_PASSWORD &&
@@ -70,7 +57,6 @@ router.post("/otp/request", async (req, res) => {
       details: `OTP ${normalizedPurpose} issued to ${email.toLowerCase()}`,
     });
 
-    // ✅ الرد النهائي
     res.json({
       message: "OTP issued successfully.",
       expiresInMinutes: otpResult.expiresIn,
@@ -78,9 +64,7 @@ router.post("/otp/request", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Failed to issue OTP:", error.message);
-    res
-      .status(500)
-      .json({ message: "Failed to issue OTP. Please try again later." });
+    res.status(500).json({ message: "Failed to issue OTP" });
   }
 });
 
@@ -90,9 +74,7 @@ router.post("/otp/request", async (req, res) => {
 router.post("/register", async (req, res) => {
   const { name, email, password, role = "staff" } = req.body;
   if (!email || !password)
-    return res
-      .status(400)
-      .json({ message: "Email and password are required" });
+    return res.status(400).json({ message: "Email and password are required" });
 
   try {
     const existing = await pool.query("SELECT id FROM users WHERE email=$1", [
@@ -109,7 +91,11 @@ router.post("/register", async (req, res) => {
       [name, email, hashedPassword, role]
     );
     const user = result.rows[0];
-    const token = createToken({ id: user.id, role: user.role });
+    const accessToken = createToken({ id: user.id, role: user.role });
+    const refreshToken = createToken(
+      { id: user.id, role: user.role },
+      "7d"
+    );
 
     await logActivity({
       userId: user.id,
@@ -119,12 +105,18 @@ router.post("/register", async (req, res) => {
       details: `Registered ${email.toLowerCase()} as ${role}`,
     });
 
-    // ✅ حفظ الكوكي
-    res.cookie("token", token, {
+    res.cookie("token", accessToken, {
       httpOnly: true,
       secure: true,
       sameSite: "None",
       maxAge: 12 * 60 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     res.status(201).json({ user, message: "✅ Registered successfully" });
@@ -140,9 +132,7 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
-    return res
-      .status(400)
-      .json({ message: "Email and password are required" });
+    return res.status(400).json({ message: "Email and password are required" });
 
   try {
     const result = await pool.query(
@@ -157,7 +147,8 @@ router.post("/login", async (req, res) => {
     if (!match)
       return res.status(401).json({ message: "Invalid credentials" });
 
-    const token = createToken({ id: user.id, role: user.role });
+    const accessToken = createToken({ id: user.id, role: user.role });
+    const refreshToken = createToken({ id: user.id, role: user.role }, "7d");
     delete user.password;
 
     await logActivity({
@@ -168,18 +159,21 @@ router.post("/login", async (req, res) => {
       details: `${email.toLowerCase()} logged in`,
     });
 
-    // ✅ نضيف الكوكي بطريقة آمنة ومتوافقة مع Vercel
-    res.cookie("token", token, {
+    res.cookie("token", accessToken, {
       httpOnly: true,
       secure: true,
       sameSite: "None",
       maxAge: 12 * 60 * 60 * 1000,
     });
 
-    res.json({
-      user,
-      message: "✅ Logged in successfully",
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
+    res.json({ user, message: "✅ Logged in successfully" });
   } catch (error) {
     console.error("❌ Failed to login:", error.message);
     res.status(500).json({ message: "Failed to login" });
@@ -187,7 +181,36 @@ router.post("/login", async (req, res) => {
 });
 
 /* ===================================================
-   🔹 4) استرجاع بيانات المستخدم (Profile)
+   🔄 4) تجديد التوكن (Refresh Token)
+=================================================== */
+router.post("/refresh", async (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
+  if (!refreshToken)
+    return res.status(401).json({ message: "No refresh token provided" });
+
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    const newAccessToken = createToken({
+      id: decoded.id,
+      role: decoded.role,
+    });
+
+    res.cookie("token", newAccessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      maxAge: 12 * 60 * 60 * 1000,
+    });
+
+    res.json({ ok: true, message: "Token refreshed successfully" });
+  } catch (error) {
+    console.error("❌ Refresh token failed:", error.message);
+    res.status(403).json({ message: "Invalid or expired refresh token" });
+  }
+});
+
+/* ===================================================
+   🔹 5) استرجاع بيانات المستخدم (Profile)
 =================================================== */
 router.get("/me", authMiddleware, async (req, res) => {
   try {
@@ -205,10 +228,15 @@ router.get("/me", authMiddleware, async (req, res) => {
 });
 
 /* ===================================================
-   🔹 5) تسجيل الخروج (Logout)
+   🔹 6) تسجيل الخروج (Logout)
 =================================================== */
 router.post("/logout", (req, res) => {
   res.clearCookie("token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+  });
+  res.clearCookie("refreshToken", {
     httpOnly: true,
     secure: true,
     sameSite: "None",
@@ -217,6 +245,6 @@ router.post("/logout", (req, res) => {
 });
 
 /* ===================================================
-   ✅ 6) تصدير الراوتر
+   ✅ 7) تصدير الراوتر
 =================================================== */
 export default router;
