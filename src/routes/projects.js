@@ -1,49 +1,63 @@
 import express from "express";
 import { pool } from "../db/connection.js";
 import { logActivity } from "../utils/logger.js";
-import multer from "multer";
-import fs from "fs";
-import path from "path";
 
 const router = express.Router();
-const uploadsRoot = path.resolve("uploads");
-const uploadsProjects = path.join(uploadsRoot, "projects");
-if (!fs.existsSync(uploadsProjects)) {
-  try { fs.mkdirSync(uploadsProjects, { recursive: true }); } catch {}
-}
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsProjects),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || "");
-    const base = path.basename(file.originalname || "file", ext).replace(/[^a-zA-Z0-9_-]/g, "_");
-    cb(null, `${Date.now()}_${Math.random().toString(36).slice(2,8)}_${base}${ext}`);
-  },
-});
-const upload = multer({ storage });
 
 /* =========================================================
-   ✅ Active projects summary (for dashboard widget)
-   📍 لازم يكون قبل أي Route فيه :id
+   📊 Summary for Dashboard & Active Projects
 ========================================================= */
+
+// 🟢 1. Active Projects Summary
 router.get("/active/summary", async (_req, res) => {
   try {
-    const running = await pool.query(
-      `SELECT COUNT(*)::int AS c FROM projects WHERE status ILIKE 'active' OR status ILIKE 'running'`
-    );
-    const assigned = await pool.query(
-      `SELECT COUNT(DISTINCT pa.user_id)::int AS c
-       FROM project_assignments pa
-       JOIN projects p ON p.id = pa.project_id
-       WHERE p.status ILIKE 'active' OR p.status ILIKE 'running'`
-    );
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE status ILIKE 'active' OR status ILIKE 'running') AS active_count,
+        COUNT(*) FILTER (WHERE status ILIKE 'upcoming') AS upcoming_count,
+        COUNT(*) FILTER (WHERE status ILIKE 'completed') AS completed_count,
+        COUNT(*) AS total_projects
+      FROM projects
+    `);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("❌ Error fetching active projects summary:", error.message);
+    res.status(500).json({ message: "Failed to load project summary" });
+  }
+});
+
+// 📈 2. Full Dashboard Summary (projects + staff + attendance + payroll)
+router.get("/dashboard/summary", async (_req, res) => {
+  try {
+    const [projects, staff, attendance, payroll] = await Promise.all([
+      pool.query(`
+        SELECT 
+          COUNT(*) FILTER (WHERE status ILIKE 'active' OR status ILIKE 'running') AS active_projects,
+          COUNT(*) FILTER (WHERE status ILIKE 'upcoming') AS upcoming_projects,
+          COUNT(*) FILTER (WHERE status ILIKE 'completed') AS completed_projects
+        FROM projects
+      `),
+      pool.query(`SELECT COUNT(*)::int AS total_staff FROM staff`),
+      pool.query(`SELECT COUNT(*)::int AS attendance_7d 
+                  FROM attendance 
+                  WHERE timestamp >= NOW() - INTERVAL '7 days'`),
+      pool.query(`SELECT COALESCE(SUM(total_amount),0)::numeric AS payroll_this_month 
+                  FROM payroll 
+                  WHERE created_at >= date_trunc('month', NOW()) 
+                  AND created_at < date_trunc('month', NOW()) + INTERVAL '1 month'`),
+    ]);
+
     res.json({
-      runningProjects: running.rows[0]?.c ?? 0,
-      totalStaffAssigned: assigned.rows[0]?.c ?? 0,
-      pendingTasks: 0,
+      active_projects: Number(projects.rows[0]?.active_projects || 0),
+      upcoming_projects: Number(projects.rows[0]?.upcoming_projects || 0),
+      completed_projects: Number(projects.rows[0]?.completed_projects || 0),
+      total_staff: staff.rows[0]?.total_staff || 0,
+      attendance_7d: attendance.rows[0]?.attendance_7d || 0,
+      payroll_this_month: Number(payroll.rows[0]?.payroll_this_month || 0),
     });
   } catch (error) {
-    console.error("❌ Failed to fetch active projects summary:", error.message);
-    res.status(500).json({ message: "Failed to fetch active projects summary" });
+    console.error("❌ Error loading dashboard summary:", error.message);
+    res.status(500).json({ message: "Failed to load dashboard summary" });
   }
 });
 
@@ -64,32 +78,39 @@ router.get("/", async (req, res) => {
 // مشروع واحد
 router.get("/:id", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM projects WHERE id=$1", [req.params.id]);
+    const result = await pool.query("SELECT * FROM projects WHERE id=$1", [
+      req.params.id,
+    ]);
     res.json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch project" });
   }
 });
 
-// إنشاء مشروع
+// إنشاء مشروع (يدعم camelCase أو snake_case)
 router.post("/", async (req, res) => {
-  const {
-    name,
-    description,
-    location_lat,
-    location_lng,
-    radius,
-    start_date,
-    end_date,
-    pay_type,
-    pay_rate,
-    allowances,
-    supervisor_id,
-  } = req.body;
+  const body = req.body;
+
+  const name = body.name;
+  const description = body.description;
+  const location_lat = body.location_lat ?? body.locationLat ?? null;
+  const location_lng = body.location_lng ?? body.locationLng ?? null;
+  const radius = body.radius ?? 200;
+  const start_date = body.start_date ?? body.startDate ?? null;
+  const end_date = body.end_date ?? body.endDate ?? null;
+  const pay_type = body.pay_type ?? body.payType ?? null;
+  const pay_rate = body.pay_rate ?? body.payRate ?? 0;
+  const allowances = body.allowances ?? 0;
+  const supervisor_id = body.supervisor_id ?? body.supervisorId ?? null;
+
   try {
     const result = await pool.query(
-      `INSERT INTO projects (name, description, location_lat, location_lng, radius, start_date, end_date, pay_type, pay_rate, allowances, supervisor_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      `INSERT INTO projects (
+        name, description, location_lat, location_lng, radius,
+        start_date, end_date, pay_type, pay_rate, allowances, supervisor_id
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING *`,
       [
         name,
         description,
@@ -104,8 +125,10 @@ router.post("/", async (req, res) => {
         supervisor_id,
       ]
     );
+
     const project = result.rows[0];
     res.status(201).json(project);
+
     await logActivity({
       userId: req.user?.id ?? null,
       action: "PROJECT_CREATED",
@@ -114,25 +137,49 @@ router.post("/", async (req, res) => {
       details: project?.name ? `Created project ${project.name}` : null,
     });
   } catch (error) {
+    console.error("❌ Failed to create project:", error.message);
     res.status(500).json({ message: "Failed to create project" });
   }
 });
 
 /* =========================================================
-   Extra endpoints for Operations Layer (Phase 3)
+   📊 Single Project Summary
 ========================================================= */
-
-// Summary for a single project: team, attendance, payroll, docs
 router.get("/:id/summary", async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+  if (!Number.isFinite(id))
+    return res.status(400).json({ message: "Invalid id" });
+
   try {
     const [team, att, pay, docs] = await Promise.all([
-      pool.query(`SELECT COUNT(DISTINCT user_id)::int AS c FROM project_assignments WHERE project_id=$1`, [id]),
-      pool.query(`SELECT COUNT(*)::int AS c FROM attendance WHERE project_id=$1 AND timestamp >= NOW() - INTERVAL '7 days'`, [id]),
-      pool.query(`SELECT COALESCE(SUM(total_amount),0)::numeric AS total FROM payroll WHERE project_id=$1 AND created_at >= date_trunc('month', NOW()) AND created_at < (date_trunc('month', NOW()) + INTERVAL '1 month')`, [id]),
-      pool.query(`SELECT COUNT(*)::int AS c FROM contracts WHERE project_id=$1`, [id]),
+      pool.query(
+        `SELECT COUNT(DISTINCT user_id)::int AS c 
+         FROM project_assignments 
+         WHERE project_id=$1`,
+        [id]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS c 
+         FROM attendance 
+         WHERE project_id=$1 AND timestamp >= NOW() - INTERVAL '7 days'`,
+        [id]
+      ),
+      pool.query(
+        `SELECT COALESCE(SUM(total_amount),0)::numeric AS total 
+         FROM payroll 
+         WHERE project_id=$1 
+           AND created_at >= date_trunc('month', NOW())
+           AND created_at < (date_trunc('month', NOW()) + INTERVAL '1 month')`,
+        [id]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS c 
+         FROM contracts 
+         WHERE project_id=$1`,
+        [id]
+      ),
     ]);
+
     res.json({
       team_count: team.rows[0]?.c ?? 0,
       attendance_last7: att.rows[0]?.c ?? 0,
@@ -143,7 +190,5 @@ router.get("/:id/summary", async (req, res) => {
     res.status(500).json({ message: "Failed to summarize project" });
   }
 });
-
-// باقي الأكواد كما هي (assignments, logs, docs, expenses ...)
 
 export default router;
