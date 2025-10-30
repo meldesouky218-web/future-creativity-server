@@ -1,13 +1,21 @@
+/* ===========================================================
+   🚀 Future Creativity Server — Main App Entry
+=========================================================== */
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import { authMiddleware } from "./middleware/auth.js";
-import { roleMiddleware } from "./middleware/roleMiddleware.js";
-import { migrate } from "./db/migrate.js";
 import path from "path";
 import fs from "fs";
 
+import { migrate } from "./db/migrate.js";
+import { authMiddleware } from "./middleware/auth.js";
+import { roleMiddleware } from "./middleware/roleMiddleware.js";
+
+/* ===========================================================
+   📦 Routes Imports
+=========================================================== */
 import authRouter from "./routes/auth.js";
 import usersRouter from "./routes/users.js";
 import staffRouter from "./routes/staff.js";
@@ -21,7 +29,7 @@ import logsRouter from "./routes/logs.js";
 import pushRouter from "./routes/push.js";
 
 /* ===========================================================
-   🌍 إعداد dotenv (فقط محليًا، مش على Vercel)
+   🌍 إعداد dotenv (محلي فقط)
 =========================================================== */
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
@@ -38,24 +46,24 @@ try {
 }
 
 /* ===========================================================
-   ⚙️ تهيئة التطبيق Express
+   ⚙️ تهيئة تطبيق Express
 =========================================================== */
 const app = express();
 
 /* ===========================================================
-   🌐 إعداد CORS لدعم الداشبورد على Vercel والدومين الرسمي
+   🌐 إعداد CORS لدعم لوحة التحكم على Vercel والدومين الرسمي
 =========================================================== */
 app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://dashboard.future-creativity.com",            // ✅ الدومين الرئيسي
-      "https://future-creativity-dashboard.vercel.app",     // ✅ نسخة Vercel الافتراضية
-      /\.vercel\.app$/,                                     // ✅ أي فرع فرعي (preview)
+      "https://dashboard.future-creativity.com", // الدومين الرسمي
+      "https://future-creativity-dashboard.vercel.app", // نسخة Vercel
+      /\.vercel\.app$/, // أي فروع Preview
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true, // ✅ ضروري علشان الكوكيز تتنقل بين النطاقات
+    credentials: true, // ضروري لنقل الكوكيز بين النطاقات
   })
 );
 
@@ -63,7 +71,7 @@ app.use(
    🧾 قراءة JSON + Cookies
 =========================================================== */
 app.use(express.json());
-app.use(cookieParser()); // ✅ لازم تكون قبل أي Route
+app.use(cookieParser()); // لازم قبل أي Route يقرأ الكوكيز
 
 /* ===========================================================
    📂 إنشاء مجلدات الرفع تلقائيًا (uploads)
@@ -98,12 +106,9 @@ app.use((req, res, next) => {
    🚀 تعريف المسارات (Routes)
 =========================================================== */
 app.use("/api/auth", authRouter);
-app.use("/api/projects", authMiddleware, projectsRouter);
-
-// ✅ رجّعنا التوثيق على staff عشان الحماية
-app.use("/api/staff", authMiddleware, roleMiddleware(["admin", "manager"]), staffRouter);
-
 app.use("/api/users", usersRouter);
+app.use("/api/projects", authMiddleware, projectsRouter);
+app.use("/api/staff", authMiddleware, roleMiddleware(["admin", "manager"]), staffRouter);
 app.use("/api/clients", authMiddleware, roleMiddleware(["admin", "manager"]), clientsRouter);
 app.use("/api/attendance", authMiddleware, attendanceRouter);
 app.use("/api/payroll", authMiddleware, roleMiddleware(["admin", "manager"]), payrollRouter);
@@ -113,7 +118,7 @@ app.use("/api/logs", authMiddleware, roleMiddleware(["admin"]), logsRouter);
 app.use("/api/push", pushRouter);
 
 /* ===========================================================
-   🩺 اختبار الاتصال (Health Check)
+   🩺 Health Check (تشخيص سريع)
 =========================================================== */
 app.get("/api/health", (req, res) => {
   res.json({
@@ -123,10 +128,20 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-app.get("/", (req, res) => res.send("✅ Future Creativity API running on Vercel"));
+app.get("/", (req, res) =>
+  res.send("✅ Future Creativity API running successfully on Vercel")
+);
 
 /* ===========================================================
-   🚀 تشغيل السيرفر (محلي فقط)
+   🧠 التعامل مع الأخطاء العامة (Fallback)
+=========================================================== */
+app.use((err, req, res, next) => {
+  console.error("❌ Server Error:", err.message);
+  res.status(500).json({ message: "Internal Server Error", error: err.message });
+});
+
+/* ===========================================================
+   🚀 تشغيل السيرفر محليًا فقط
 =========================================================== */
 const PORT = process.env.PORT || 5000;
 
