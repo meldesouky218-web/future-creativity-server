@@ -1,7 +1,7 @@
 {
   "name": "future-creativity-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "Future Creativity backend server (Express + PostgreSQL + JWT)",
   "type": "module",
   "main": "src/app.js",
   "scripts": {
@@ -12,11 +12,19 @@
     "reset-admin": "node src/utils/resetAdmin.js",
     "seed:users": "node src/utils/seedDemoUsers.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "express",
+    "vercel",
+    "postgresql",
+    "jwt",
+    "api",
+    "future-creativity"
+  ],
+  "author": "Future of Creativity Co.",
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.6",           // ✅ أضفنا المكتبة المفقودة
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
