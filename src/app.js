@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import cookieParser from "cookie-parser"; // ✅ أضفنا المكتبة هنا
+import cookieParser from "cookie-parser";
 import { authMiddleware } from "./middleware/auth.js";
 import { roleMiddleware } from "./middleware/roleMiddleware.js";
 import { migrate } from "./db/migrate.js";
