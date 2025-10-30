@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "../db/connection.js";
@@ -119,7 +119,15 @@ router.post("/register", async (req, res) => {
       details: `Registered ${email.toLowerCase()} as ${role}`,
     });
 
-    res.status(201).json({ user, token });
+    // ✅ حفظ الكوكي
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      maxAge: 12 * 60 * 60 * 1000,
+    });
+
+    res.status(201).json({ user, message: "✅ Registered successfully" });
   } catch (error) {
     console.error("❌ Failed to register user:", error.message);
     res.status(500).json({ message: "Failed to register user" });
@@ -146,7 +154,8 @@ router.post("/login", async (req, res) => {
 
     const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ message: "Invalid credentials" });
+    if (!match)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     const token = createToken({ id: user.id, role: user.role });
     delete user.password;
@@ -159,7 +168,18 @@ router.post("/login", async (req, res) => {
       details: `${email.toLowerCase()} logged in`,
     });
 
-    res.json({ user, token });
+    // ✅ نضيف الكوكي بطريقة آمنة ومتوافقة مع Vercel
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      maxAge: 12 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      user,
+      message: "✅ Logged in successfully",
+    });
   } catch (error) {
     console.error("❌ Failed to login:", error.message);
     res.status(500).json({ message: "Failed to login" });
@@ -185,6 +205,18 @@ router.get("/me", authMiddleware, async (req, res) => {
 });
 
 /* ===================================================
-   ✅ 5) تصدير الراوتر
+   🔹 5) تسجيل الخروج (Logout)
+=================================================== */
+router.post("/logout", (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+  });
+  res.json({ message: "✅ Logged out successfully" });
+});
+
+/* ===================================================
+   ✅ 6) تصدير الراوتر
 =================================================== */
 export default router;
