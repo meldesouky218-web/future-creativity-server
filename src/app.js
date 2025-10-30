@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser"; // ✅ أضفنا المكتبة هنا
 import { authMiddleware } from "./middleware/auth.js";
 import { roleMiddleware } from "./middleware/roleMiddleware.js";
 import { migrate } from "./db/migrate.js";
@@ -48,20 +49,21 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://dashboard.future-creativity.com",            // ✅ الدومين الرئيسي للوحة التحكم
+      "https://dashboard.future-creativity.com",            // ✅ الدومين الرئيسي
       "https://future-creativity-dashboard.vercel.app",     // ✅ نسخة Vercel الافتراضية
-      /\.vercel\.app$/,                                     // ✅ يسمح لأي فرع فرعي (preview)
+      /\.vercel\.app$/,                                     // ✅ أي فرع فرعي (preview)
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
+    credentials: true, // ✅ ضروري علشان الكوكيز تتنقل بين النطاقات
   })
 );
 
 /* ===========================================================
-   🧾 قراءة JSON
+   🧾 قراءة JSON + Cookies
 =========================================================== */
 app.use(express.json());
+app.use(cookieParser()); // ✅ لازم تكون قبل أي Route
 
 /* ===========================================================
    📂 إنشاء مجلدات الرفع تلقائيًا (uploads)
