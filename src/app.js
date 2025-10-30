@@ -42,14 +42,15 @@ try {
 const app = express();
 
 /* ===========================================================
-   🌐 إعداد CORS لدعم الداشبورد على Vercel
+   🌐 إعداد CORS لدعم الداشبورد على Vercel والدومين الرسمي
 =========================================================== */
 app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://future-creativity-dashboard.vercel.app",
-      /\.vercel\.app$/, // ✅ يسمح لأي فرع فرعي (preview) من Vercel
+      "https://dashboard.future-creativity.com",            // ✅ الدومين الرئيسي للوحة التحكم
+      "https://future-creativity-dashboard.vercel.app",     // ✅ نسخة Vercel الافتراضية
+      /\.vercel\.app$/,                                     // ✅ يسمح لأي فرع فرعي (preview)
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -107,8 +108,16 @@ app.use("/api/logs", authMiddleware, roleMiddleware(["admin"]), logsRouter);
 app.use("/api/push", pushRouter);
 
 /* ===========================================================
-   🩺 اختبار الاتصال
+   🩺 اختبار الاتصال (Health Check)
 =========================================================== */
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    time: new Date().toISOString(),
+    message: "✅ Future Creativity API is alive",
+  });
+});
+
 app.get("/", (req, res) => res.send("✅ Future Creativity API running on Vercel"));
 
 /* ===========================================================
